@@ -73,6 +73,9 @@ def delete_all_vectors():
 
     print("Deleting all documents...")
 
-    index.delete(namespace=NAMESPACE, delete_all=True)
+    index.documents.delete(
+        namespace=NAMESPACE,
+        delete_all=True
+    )
 
     print("All documents deleted successfully.")

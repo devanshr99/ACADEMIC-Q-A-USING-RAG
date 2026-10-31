@@ -3,5 +3,5 @@ uvicorn[standard]
 python-dotenv
 pypdf
 sentence-transformers
-pinecone
+pinecone>=10.0.0
 openai

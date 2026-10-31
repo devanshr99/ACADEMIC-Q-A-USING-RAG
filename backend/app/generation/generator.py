@@ -1,35 +1,24 @@
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
 
-
-# ==========================================
-# LOAD ENVIRONMENT VARIABLES
-# ==========================================
-
-load_dotenv(".env")
+# Load backend/.env reliably
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BACKEND_DIR / ".env")
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 if not API_KEY:
-    raise ValueError(
-        "OPENROUTER_API_KEY not found in .env"
-    )
+    raise ValueError("OPENROUTER_API_KEY not found.")
 
-
-# ==========================================
-# OPENROUTER CLIENT
-# ==========================================
-
+# OpenRouter client
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=API_KEY
 )
 
-
-# Use a specific free model instead of random
-# openrouter/free routing.
 MODEL_NAME = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
 
