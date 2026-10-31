@@ -1,10 +1,16 @@
 
 import os
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
 from pinecone import Pinecone
 from sentence_transformers import SentenceTransformer
+
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # Load environment variables
@@ -29,46 +35,91 @@ NAMESPACE = "academic-rag"
 
 
 # Load embedding model
+logger.info("Loading Sentence Transformer model...")
 model = SentenceTransformer("all-MiniLM-L6-v2")
+logger.info("Embedding model loaded successfully.")
 
 
 def retrieve(query, top_k=5):
 
-    # Generate query embedding
-    query_embedding = model.encode(
-        query,
-        normalize_embeddings=True
-    ).tolist()
+    logger.info("========== RETRIEVAL START ==========")
+    logger.info("Index: %s", INDEX_NAME)
+    logger.info("Namespace: %s", NAMESPACE)
+    logger.info("Query: %s", query)
 
-    if len(query_embedding) != 384:
-        raise ValueError(
-            f"Expected 384 dimensions, got {len(query_embedding)}"
+    try:
+        # Generate query embedding
+        query_embedding = model.encode(
+            query,
+            normalize_embeddings=True
+        ).tolist()
+
+        logger.info("Embedding generated: %s dimensions", len(query_embedding))
+
+        if len(query_embedding) != 384:
+            raise ValueError(
+                f"Expected 384 dimensions, got {len(query_embedding)}"
+            )
+
+        # Check Pinecone index statistics
+        stats = index.describe_index_stats()
+
+        logger.info("Total Pinecone vectors: %s", stats.total_vector_count)
+
+        namespace_stats = stats.namespaces or {}
+        namespace_info = namespace_stats.get(NAMESPACE)
+
+        if namespace_info:
+            logger.info(
+                "Vectors in namespace %s: %s",
+                NAMESPACE,
+                namespace_info.vector_count
+            )
+        else:
+            logger.warning(
+                "Namespace %s not found in index statistics",
+                NAMESPACE
+            )
+
+        # Search Pinecone
+        results = index.query(
+            vector=query_embedding,
+            top_k=top_k,
+            namespace=NAMESPACE,
+            include_metadata=True
         )
 
-    # Search Pinecone using Vector API
-    results = index.query(
-        vector=query_embedding,
-        top_k=top_k,
-        namespace=NAMESPACE,
-        include_metadata=True
-    )
+        logger.info("Retrieved matches: %s", len(results.matches))
 
-    matches = []
+        matches = []
 
-    for match in results.matches:
+        for match in results.matches:
 
-        metadata = match.metadata or {}
+            metadata = match.metadata or {}
 
-        matches.append({
-            "id": match.id,
-            "score": match.score,
-            "metadata": {
-                "text": metadata.get("text", ""),
-                "title": metadata.get("title", ""),
-                "page": metadata.get("page", 0),
-                "source": metadata.get("source", "dbms.pdf"),
-                "chunk_id": metadata.get("chunk_id", 0)
-            }
-        })
+            logger.info(
+                "Match ID: %s | Score: %s | Text available: %s",
+                match.id,
+                match.score,
+                bool(metadata.get("text"))
+            )
 
-    return matches
+            matches.append({
+                "id": match.id,
+                "score": match.score,
+                "metadata": {
+                    "text": metadata.get("text", ""),
+                    "title": metadata.get("title", ""),
+                    "page": metadata.get("page", 0),
+                    "source": metadata.get("source", "dbms.pdf"),
+                    "chunk_id": metadata.get("chunk_id", 0)
+                }
+            })
+
+        logger.info("========== RETRIEVAL COMPLETE ==========")
+
+        return matches
+
+    except Exception:
+        logger.exception("PINECONE RETRIEVAL FAILED")
+        raise
