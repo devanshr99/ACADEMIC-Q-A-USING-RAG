@@ -1,12 +1,9 @@
-
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 from pinecone import Pinecone
 
-
-# Load environment variables reliably
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BACKEND_DIR / ".env")
 
@@ -19,7 +16,6 @@ if not API_KEY:
 if not INDEX_NAME:
     raise ValueError("PINECONE_INDEX_NAME not found.")
 
-# Connect to Pinecone
 pc = Pinecone(api_key=API_KEY)
 index = pc.Index(INDEX_NAME)
 
@@ -31,7 +27,7 @@ def upload_chunks(chunks, embeddings):
     if len(chunks) != len(embeddings):
         raise ValueError("Chunks and embeddings count mismatch.")
 
-    documents = []
+    vectors = []
 
     for chunk, embedding in zip(chunks, embeddings):
 
@@ -40,42 +36,41 @@ def upload_chunks(chunks, embeddings):
                 f"Expected 384 dimensions, got {len(embedding)}"
             )
 
-        document = {
-            "_id": f"chunk-{chunk['chunk_id']}",
-            "embedding": [float(value) for value in embedding],
-            "chunk_text": chunk["text"],
-            "title": "DBMS",
-            "page": int(chunk["page"]),
-            "source": "dbms.pdf",
-            "chunk_id": int(chunk["chunk_id"])
-        }
+        vectors.append({
+            "id": f"chunk-{chunk['chunk_id']}",
+            "values": [float(value) for value in embedding],
+            "metadata": {
+                "text": chunk["text"],
+                "title": "DBMS",
+                "page": int(chunk["page"]),
+                "source": "dbms.pdf",
+                "chunk_id": int(chunk["chunk_id"])
+            }
+        })
 
-        documents.append(document)
-
-    # Upload in batches of 50 documents
     total_uploaded = 0
 
-    for start in range(0, len(documents), 50):
+    for start in range(0, len(vectors), 50):
 
-        batch = documents[start:start + 50]
+        batch = vectors[start:start + 50]
 
-        response = index.documents.upsert(
-            namespace=NAMESPACE,
-            documents=batch
+        response = index.upsert(
+            vectors=batch,
+            namespace=NAMESPACE
         )
 
         total_uploaded += response.upserted_count
 
-    print(f"Uploaded {total_uploaded} documents to Pinecone.")
+    print(f"Uploaded {total_uploaded} vectors to Pinecone.")
 
 
 def delete_all_vectors():
 
-    print("Deleting all documents...")
+    print("Deleting all vectors...")
 
-    index.documents.delete(
-        namespace=NAMESPACE,
-        delete_all=True
+    index.delete(
+        delete_all=True,
+        namespace=NAMESPACE
     )
 
-    print("All documents deleted successfully.")
+    print("All vectors deleted successfully.")

@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pinecone import Pinecone, DenseVectorQuery
+from pinecone import Pinecone
 from sentence_transformers import SentenceTransformer
 
 
@@ -20,14 +20,15 @@ if not API_KEY:
 if not INDEX_NAME:
     raise ValueError("PINECONE_INDEX_NAME not found.")
 
-# Pinecone connection
-pc = Pinecone(api_key=API_KEY)
-index = pc.index(INDEX_NAME)
 
-# Must match the ingestion namespace
+# Connect to Pinecone
+pc = Pinecone(api_key=API_KEY)
+index = pc.Index(INDEX_NAME)
+
 NAMESPACE = "academic-rag"
 
-# Same model used during ingestion
+
+# Load embedding model
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
 
@@ -44,40 +45,29 @@ def retrieve(query, top_k=5):
             f"Expected 384 dimensions, got {len(query_embedding)}"
         )
 
-    # Search schema-based Pinecone document index
-    results = index.documents.search(
-        namespace=NAMESPACE,
+    # Search Pinecone using Vector API
+    results = index.query(
+        vector=query_embedding,
         top_k=top_k,
-        score_by=[
-            DenseVectorQuery(
-                field="embedding",
-                values=query_embedding
-            )
-        ],
-        include_fields=[
-            "chunk_text",
-            "title",
-            "page",
-            "source",
-            "chunk_id"
-        ]
+        namespace=NAMESPACE,
+        include_metadata=True
     )
 
-    # Convert Pinecone documents into the old
-    # metadata-based response format for compatibility
     matches = []
 
-    for doc in results.matches:
+    for match in results.matches:
+
+        metadata = match.metadata or {}
 
         matches.append({
-            "id": doc.id,
-            "score": doc.score,
+            "id": match.id,
+            "score": match.score,
             "metadata": {
-                "text": doc.get("chunk_text", ""),
-                "title": doc.get("title", ""),
-                "page": doc.get("page", 0),
-                "source": doc.get("source", "dbms.pdf"),
-                "chunk_id": doc.get("chunk_id", 0)
+                "text": metadata.get("text", ""),
+                "title": metadata.get("title", ""),
+                "page": metadata.get("page", 0),
+                "source": metadata.get("source", "dbms.pdf"),
+                "chunk_id": metadata.get("chunk_id", 0)
             }
         })
 
