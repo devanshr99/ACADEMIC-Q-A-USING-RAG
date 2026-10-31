@@ -29,6 +29,13 @@ if not INDEX_NAME:
 
 # Connect to Pinecone
 pc = Pinecone(api_key=API_KEY)
+
+# Describe index and log its host
+index_description = pc.describe_index(INDEX_NAME)
+
+logger.info("PINECONE INDEX NAME: %s", INDEX_NAME)
+logger.info("PINECONE INDEX HOST: %s", index_description.host)
+
 index = pc.Index(INDEX_NAME)
 
 NAMESPACE = "academic-rag"
@@ -48,23 +55,28 @@ def retrieve(query, top_k=5):
     logger.info("Query: %s", query)
 
     try:
-        # Generate query embedding
         query_embedding = model.encode(
             query,
             normalize_embeddings=True
         ).tolist()
 
-        logger.info("Embedding generated: %s dimensions", len(query_embedding))
+        logger.info(
+            "Embedding generated: %s dimensions",
+            len(query_embedding)
+        )
 
         if len(query_embedding) != 384:
             raise ValueError(
                 f"Expected 384 dimensions, got {len(query_embedding)}"
             )
 
-        # Check Pinecone index statistics
+        # Check Pinecone statistics
         stats = index.describe_index_stats()
 
-        logger.info("Total Pinecone vectors: %s", stats.total_vector_count)
+        logger.info(
+            "Total Pinecone vectors: %s",
+            stats.total_vector_count
+        )
 
         namespace_stats = stats.namespaces or {}
         namespace_info = namespace_stats.get(NAMESPACE)
