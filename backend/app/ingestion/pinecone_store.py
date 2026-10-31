@@ -1,97 +1,78 @@
+
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from pinecone import Pinecone
 
 
-# Load environment variables
-load_dotenv(".env")
-
+# Load environment variables reliably
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BACKEND_DIR / ".env")
 
 API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
 
-
 if not API_KEY:
-    raise ValueError(
-        "PINECONE_API_KEY not found in .env"
-    )
-
+    raise ValueError("PINECONE_API_KEY not found.")
 
 if not INDEX_NAME:
-    raise ValueError(
-        "PINECONE_INDEX_NAME not found in .env"
-    )
-
+    raise ValueError("PINECONE_INDEX_NAME not found.")
 
 # Connect to Pinecone
-pc = Pinecone(
-    api_key=API_KEY
-)
+pc = Pinecone(api_key=API_KEY)
+index = pc.Index(INDEX_NAME)
+
+NAMESPACE = "academic-rag"
 
 
-# Connect to existing index
-index = pc.Index(
-    INDEX_NAME
-)
+def upload_chunks(chunks, embeddings):
 
+    if len(chunks) != len(embeddings):
+        raise ValueError("Chunks and embeddings count mismatch.")
 
-def upload_chunks(
-    chunks,
-    embeddings
-):
+    documents = []
 
-    vectors = []
+    for chunk, embedding in zip(chunks, embeddings):
 
-    for chunk, embedding in zip(
-        chunks,
-        embeddings
-    ):
+        if len(embedding) != 384:
+            raise ValueError(
+                f"Expected 384 dimensions, got {len(embedding)}"
+            )
 
-        vector = {
-
-            "id": f"chunk-{chunk['chunk_id']}",
-
-            "values": embedding,
-
-            "metadata": {
-
-                "text": chunk["text"],
-
-                "page": chunk["page"],
-
-                "source": "dbms.pdf",
-
-                "chunk_id": chunk["chunk_id"]
-
-            }
-
+        document = {
+            "_id": f"chunk-{chunk['chunk_id']}",
+            "embedding": [float(value) for value in embedding],
+            "chunk_text": chunk["text"],
+            "title": "DBMS",
+            "page": int(chunk["page"]),
+            "source": "dbms.pdf",
+            "chunk_id": int(chunk["chunk_id"])
         }
 
-        vectors.append(vector)
+        documents.append(document)
 
+    # Upload in batches of 50 documents
+    total_uploaded = 0
 
-    # Upload vectors
-    index.upsert(
-        vectors=vectors
-    )
+    for start in range(0, len(documents), 50):
 
+        batch = documents[start:start + 50]
 
-    print(
-        f"Uploaded {len(vectors)} vectors to Pinecone."
-    )
+        response = index.documents.upsert(
+            namespace=NAMESPACE,
+            documents=batch
+        )
+
+        total_uploaded += response.upserted_count
+
+    print(f"Uploaded {total_uploaded} documents to Pinecone.")
 
 
 def delete_all_vectors():
 
-    print(
-        "Deleting all existing vectors..."
-    )
+    print("Deleting all documents...")
 
-    index.delete(
-        delete_all=True
-    )
+    index.delete(namespace=NAMESPACE, delete_all=True)
 
-    print(
-        "All old vectors deleted successfully."
-    )
+    print("All documents deleted successfully.")
