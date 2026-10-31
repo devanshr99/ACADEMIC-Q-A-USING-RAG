@@ -1,6 +1,7 @@
 
 import os
 import logging
+import hashlib
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -29,13 +30,6 @@ if not INDEX_NAME:
 
 # Connect to Pinecone
 pc = Pinecone(api_key=API_KEY)
-
-# Describe index and log its host
-index_description = pc.describe_index(INDEX_NAME)
-
-logger.info("PINECONE INDEX NAME: %s", INDEX_NAME)
-logger.info("PINECONE INDEX HOST: %s", index_description.host)
-
 index = pc.Index(INDEX_NAME)
 
 NAMESPACE = "academic-rag"
@@ -55,6 +49,22 @@ def retrieve(query, top_k=5):
     logger.info("Query: %s", query)
 
     try:
+        # Safe API key fingerprint (never log the actual key)
+        key_fingerprint = hashlib.sha256(
+            API_KEY.encode()
+        ).hexdigest()[:10]
+
+        logger.info("PINECONE KEY CHECK: %s", key_fingerprint)
+
+        # Check actual index host during each query
+        index_description = pc.describe_index(INDEX_NAME)
+
+        logger.info(
+            "CLOUD INDEX HOST: %s",
+            index_description.host
+        )
+
+        # Generate query embedding
         query_embedding = model.encode(
             query,
             normalize_embeddings=True
@@ -101,7 +111,10 @@ def retrieve(query, top_k=5):
             include_metadata=True
         )
 
-        logger.info("Retrieved matches: %s", len(results.matches))
+        logger.info(
+            "Retrieved matches: %s",
+            len(results.matches)
+        )
 
         matches = []
 
